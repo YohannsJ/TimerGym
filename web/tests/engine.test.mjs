@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { TimerEngine, Phase, clampConfig, formatTime } from '../js/engine.js';
+import { TimerEngine, Phase, clampConfig, clampSession, compileSession, sessionFromConfig, formatTime } from '../js/engine.js';
 
 /** Reloj falso controlable para simular paso del tiempo. */
 function fakeClock(startMs = 0) {
@@ -256,6 +256,141 @@ describe('reset y reinicio', () => {
     engine.start();
     assert.equal(engine.getState().phase, Phase.WORK);
     assert.equal(engine.getState().running, true);
+  });
+});
+
+describe('sesiones multi-bloque', () => {
+  const SESSION = {
+    name: 'Full Body',
+    prepareSeconds: 5,
+    blocks: [
+      { name: 'Sentadillas', workSeconds: 30, restSeconds: 15, sets: 2 },
+      { name: 'Plancha', workSeconds: 20, restSeconds: 10, sets: 2 },
+    ],
+  };
+
+  function makeSessionEngine(session = SESSION, events = []) {
+    const clock = fakeClock();
+    const engine = new TimerEngine({}, { now: clock.now, onEvent: (e) => events.push(e) });
+    engine.configureSession(session);
+    return { engine, clock, events };
+  }
+
+  test('clampSession normaliza bloques inválidos y garantiza al menos uno', () => {
+    const s = clampSession({ name: '  X  ', prepareSeconds: 999, blocks: [] });
+    assert.equal(s.name, 'X');
+    assert.equal(s.prepareSeconds, 60);
+    assert.equal(s.blocks.length, 1);
+    assert.equal(s.blocks[0].workSeconds, 45);
+  });
+
+  test('compileSession omite el REST final y respeta descanso 0', () => {
+    const intervals = compileSession({
+      prepareSeconds: 0,
+      blocks: [
+        { name: 'A', workSeconds: 10, restSeconds: 5, sets: 2 },
+        { name: 'B', workSeconds: 10, restSeconds: 0, sets: 2 },
+      ],
+    });
+    // A: work rest work rest(transición a B) · B: work work (sin rests)
+    assert.deepEqual(
+      intervals.map((i) => `${i.phase}:${i.label}`),
+      ['work:A', 'rest:A', 'work:A', 'rest:A', 'work:B', 'work:B']
+    );
+  });
+
+  test('sessionFromConfig equivale a un bloque único', () => {
+    const s = sessionFromConfig({ workSeconds: 30, restSeconds: 10, sets: 3, prepareSeconds: 0 });
+    assert.equal(s.blocks.length, 1);
+    assert.equal(s.blocks[0].sets, 3);
+  });
+
+  test('recorre bloques en orden con labels y sets por bloque', () => {
+    const { engine, clock } = makeSessionEngine();
+    engine.start();
+    clock.advance(5000); engine.tick(); // fin de preparación
+    let s = engine.getState();
+    assert.equal(s.phase, Phase.WORK);
+    assert.equal(s.label, 'Sentadillas');
+    assert.equal(s.blockIndex, 0);
+
+    // Sentadillas: 30+15+30+15 = 90s -> primer work de Plancha
+    clock.advance(90000); engine.tick();
+    s = engine.getState();
+    assert.equal(s.phase, Phase.WORK);
+    assert.equal(s.label, 'Plancha');
+    assert.equal(s.currentSet, 1);
+    assert.equal(s.totalSets, 2);
+    assert.equal(s.blockIndex, 1);
+
+    // Plancha: 20+10+20 y termina (último rest omitido)
+    clock.advance(50000); engine.tick();
+    assert.equal(engine.getState().phase, Phase.DONE);
+  });
+
+  test('nextUp anuncia el próximo ejercicio', () => {
+    const { engine, clock } = makeSessionEngine();
+    engine.start();
+    clock.advance(5000); engine.tick();
+    // Durante el primer work de Sentadillas, lo próximo es Sentadillas (set 2)
+    assert.equal(engine.getState().nextUp, 'Sentadillas');
+    // En el último rest de Sentadillas, lo próximo es Plancha
+    clock.advance(75000); engine.tick(); // 30+15+30 = rest de transición
+    const s = engine.getState();
+    assert.equal(s.phase, Phase.REST);
+    assert.equal(s.nextUp, 'Plancha');
+    // En el último work no hay siguiente
+    clock.advance(45000); engine.tick(); // 15 + 20 + 10 -> último work
+    assert.equal(engine.getState().phase, Phase.WORK);
+    assert.equal(engine.getState().nextUp, null);
+  });
+
+  test('overflow encadena a través del límite de bloques', () => {
+    const { engine, clock } = makeSessionEngine();
+    engine.start();
+    // 5(prep) + 90(sentadillas) + 20(plancha w1) + 3 dentro del rest de plancha
+    clock.advance(118000); engine.tick();
+    const s = engine.getState();
+    assert.equal(s.phase, Phase.REST);
+    assert.equal(s.label, 'Plancha');
+    assert.equal(s.remainingSeconds, 7);
+  });
+
+  test('sessionProgress avanza de 0 a 1', () => {
+    const { engine, clock } = makeSessionEngine();
+    assert.equal(engine.getState().sessionProgress, 0);
+    engine.start();
+    clock.advance(5000 + 90000 + 50000); engine.tick();
+    assert.equal(engine.getState().phase, Phase.DONE);
+    assert.equal(engine.getState().sessionProgress, 1);
+  });
+
+  test('phaseChange incluye label y nextUp', () => {
+    const events = [];
+    const { engine, clock } = makeSessionEngine(SESSION, events);
+    engine.start();
+    clock.advance(5000); engine.tick();
+    const change = events.filter((e) => e.type === 'phaseChange').at(-1);
+    assert.equal(change.phase, Phase.WORK);
+    assert.equal(change.label, 'Sentadillas');
+    assert.equal(change.blockCount, 2);
+  });
+
+  test('reset conserva la sesión configurada', () => {
+    const { engine, clock } = makeSessionEngine();
+    engine.start();
+    clock.advance(60000); engine.tick();
+    engine.reset();
+    const s = engine.getState();
+    assert.equal(s.phase, Phase.IDLE);
+    assert.equal(s.session.blocks.length, 2);
+    assert.equal(s.remainingSeconds, 30); // work del primer bloque
+  });
+
+  test('limita a 20 bloques', () => {
+    const blocks = Array.from({ length: 30 }, (_, i) => ({ name: `B${i}`, workSeconds: 10, restSeconds: 0, sets: 1 }));
+    const s = clampSession({ blocks });
+    assert.equal(s.blocks.length, 20);
   });
 });
 

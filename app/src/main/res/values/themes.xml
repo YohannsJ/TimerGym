@@ -1,5 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.TimerGym" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- Tema framework: la app no depende de Material Components XML
+         (solo Compose), asi que el parent debe ser un tema de plataforma. -->
+    <style name="Theme.TimerGym" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
     </style>

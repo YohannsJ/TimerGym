@@ -125,11 +125,18 @@ setInterval(() => {
 
 // ---- Builder de sesión ----
 
+/**
+ * Normaliza el draft, reconfigura el motor y re-renderiza todo.
+ * clampSession crea objetos nuevos, así que las filas del builder deben
+ * reconstruirse siempre: si no, sus listeners quedan apuntando a bloques
+ * huérfanos y las ediciones siguientes se pierden.
+ */
 function applyDraft({ rename = true } = {}) {
   draft = clampSession(draft);
   engine.configureSession(draft);
   saveLastSession(draft);
   if (rename) selectedName = 'Personalizado';
+  renderBuilder();
   renderSessions();
   render();
 }
@@ -161,9 +168,9 @@ function renderBuilder() {
     sets.value = block.sets;
 
     name.addEventListener('change', () => { block.name = name.value; applyDraft(); });
-    work.addEventListener('change', () => { block.workSeconds = Number(work.value); applyDraft(); renderBuilder(); });
-    rest.addEventListener('change', () => { block.restSeconds = Number(rest.value); applyDraft(); renderBuilder(); });
-    sets.addEventListener('change', () => { block.sets = Number(sets.value); applyDraft(); renderBuilder(); });
+    work.addEventListener('change', () => { block.workSeconds = Number(work.value); applyDraft(); });
+    rest.addEventListener('change', () => { block.restSeconds = Number(rest.value); applyDraft(); });
+    sets.addEventListener('change', () => { block.sets = Number(sets.value); applyDraft(); });
 
     row.querySelector('.block-up').addEventListener('click', () => moveBlock(index, -1));
     row.querySelector('.block-down').addEventListener('click', () => moveBlock(index, 1));
@@ -172,7 +179,6 @@ function renderBuilder() {
     del.addEventListener('click', () => {
       draft.blocks.splice(index, 1);
       applyDraft();
-      renderBuilder();
     });
 
     root.dataset.index = String(index);
@@ -186,13 +192,11 @@ function moveBlock(index, delta) {
   const [block] = draft.blocks.splice(index, 1);
   draft.blocks.splice(target, 0, block);
   applyDraft();
-  renderBuilder();
 }
 
 els.prepare.addEventListener('change', () => {
   draft.prepareSeconds = Number(els.prepare.value);
   applyDraft();
-  renderBuilder();
 });
 
 els.addBlock.addEventListener('click', () => {
@@ -200,7 +204,6 @@ els.addBlock.addEventListener('click', () => {
   const last = draft.blocks[draft.blocks.length - 1];
   draft.blocks.push({ ...last, name: '' });
   applyDraft();
-  renderBuilder();
 });
 
 // ---- Sesiones guardadas ----

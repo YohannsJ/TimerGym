@@ -1,6 +1,6 @@
 /* Service worker: cache-first para que la app funcione offline e instalada. */
 
-const CACHE = 'timergym-v1';
+const CACHE = 'timergym-v2';
 const ASSETS = [
   '.',
   'index.html',

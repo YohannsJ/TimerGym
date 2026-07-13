@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0e1726" />
-  <meta name="description" content="Timer de entrenamiento por sets: trabajo, descanso y cadencias configurables." />
+  <meta name="theme-color" content="#050507" />
+  <meta name="description" content="Timer de entrenamiento por sesiones: bloques de ejercicios, trabajo, descanso y cadencias configurables." />
   <title>TimerGym</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
@@ -14,8 +14,11 @@
 <body>
   <main class="app">
     <header class="header">
-      <h1>TimerGym</h1>
-      <p id="preset-label" class="preset-label">Personalizado</p>
+      <h1 class="logo">TIMER<span class="logo-accent">GYM</span></h1>
+      <div class="header-row">
+        <p id="preset-label" class="preset-label">Personalizado</p>
+        <button id="btn-sound" class="btn-icon" type="button" title="Sonido on/off" aria-label="Sonido">🔊</button>
+      </div>
     </header>
 
     <section class="timer-card" aria-live="polite">
@@ -25,52 +28,74 @@
           <circle id="dial-progress" class="dial-progress" cx="100" cy="100" r="88" />
         </svg>
         <div class="dial-center">
-          <span id="time-display" class="time">00:45</span>
           <span id="phase-display" class="phase phase-idle">PREPARADO</span>
-          <span id="set-display" class="sets">Set 1 / 5</span>
+          <span id="time-display" class="time">00:45</span>
+          <span id="label-display" class="exercise"></span>
+          <span id="set-display" class="sets">SET 1/5</span>
         </div>
       </div>
 
+      <div class="session-bar-track" title="Progreso de la sesión">
+        <div id="session-bar" class="session-bar"></div>
+      </div>
+
+      <div id="next-up" class="next-up" hidden>
+        <span class="next-up-tag">SIGUIENTE ▸</span>
+        <span id="next-up-label"></span>
+      </div>
+
       <div class="controls-main">
-        <button id="btn-toggle" class="btn btn-primary" type="button">Iniciar</button>
-        <button id="btn-reset" class="btn btn-ghost" type="button">Reiniciar</button>
+        <button id="btn-toggle" class="btn btn-primary" type="button">INICIAR</button>
+        <button id="btn-reset" class="btn btn-ghost" type="button">REINICIAR</button>
       </div>
 
       <div class="controls-live">
         <button id="btn-minus" class="btn btn-ghost" type="button" title="Adelantar 10 segundos">-10s</button>
         <button id="btn-plus" class="btn btn-ghost" type="button" title="Extender 10 segundos">+10s</button>
-        <button id="btn-skip" class="btn btn-ghost" type="button" title="Saltar a la siguiente fase">Cortar fase ⏭</button>
+        <button id="btn-skip" class="btn btn-ghost" type="button" title="Saltar a la siguiente fase">CORTAR ⏭</button>
       </div>
     </section>
 
     <section class="config-card">
-      <h2>Programar rutina</h2>
-      <div class="fields">
-        <label>Trabajo (s)
-          <input id="input-work" type="number" inputmode="numeric" min="5" max="3600" value="45" />
-        </label>
-        <label>Descanso (s)
-          <input id="input-rest" type="number" inputmode="numeric" min="0" max="3600" value="90" />
-        </label>
-        <label>Sets
-          <input id="input-sets" type="number" inputmode="numeric" min="1" max="100" value="5" />
-        </label>
-        <label>Preparación (s)
+      <h2>ARMAR SESIÓN</h2>
+
+      <div class="session-meta">
+        <label class="field-prepare">Preparación (s)
           <input id="input-prepare" type="number" inputmode="numeric" min="0" max="60" value="5" />
         </label>
       </div>
 
+      <div id="block-list" class="block-list"></div>
+
+      <button id="btn-add-block" class="btn btn-ghost btn-add" type="button">+ BLOQUE</button>
+
       <div class="save-row">
-        <input id="input-routine-name" type="text" maxlength="24" placeholder="Nombre de rutina" />
-        <button id="btn-save" class="btn btn-ghost" type="button">Guardar</button>
+        <input id="input-session-name" type="text" maxlength="40" placeholder="Nombre de sesión" />
+        <button id="btn-save" class="btn btn-ghost" type="button">GUARDAR</button>
       </div>
     </section>
 
     <section class="presets-card">
-      <h2>Rutinas</h2>
-      <div id="preset-list" class="preset-list"></div>
+      <h2>SESIONES</h2>
+      <div id="session-list" class="preset-list"></div>
     </section>
   </main>
+
+  <template id="block-row-template">
+    <div class="block-row">
+      <input class="block-name" type="text" maxlength="40" placeholder="Ejercicio" title="Nombre del ejercicio" />
+      <div class="block-nums">
+        <label>Trabajo<input class="block-work" type="number" inputmode="numeric" min="5" max="3600" /></label>
+        <label>Descanso<input class="block-rest" type="number" inputmode="numeric" min="0" max="3600" /></label>
+        <label>Sets<input class="block-sets" type="number" inputmode="numeric" min="1" max="100" /></label>
+      </div>
+      <div class="block-actions">
+        <button class="btn-icon block-up" type="button" title="Subir bloque">▲</button>
+        <button class="btn-icon block-down" type="button" title="Bajar bloque">▼</button>
+        <button class="btn-icon block-delete" type="button" title="Quitar bloque">✕</button>
+      </div>
+    </div>
+  </template>
 
   <script type="module" src="js/app.js"></script>
   <script>

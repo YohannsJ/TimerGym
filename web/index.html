@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e1726" />
+  <meta name="description" content="Timer de entrenamiento por sets: trabajo, descanso y cadencias configurables." />
+  <title>TimerGym</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>TimerGym</h1>
+      <p id="preset-label" class="preset-label">Personalizado</p>
+    </header>
+
+    <section class="timer-card" aria-live="polite">
+      <div class="dial-wrap">
+        <svg class="dial" viewBox="0 0 200 200" role="img" aria-label="Progreso de la fase">
+          <circle class="dial-track" cx="100" cy="100" r="88" />
+          <circle id="dial-progress" class="dial-progress" cx="100" cy="100" r="88" />
+        </svg>
+        <div class="dial-center">
+          <span id="time-display" class="time">00:45</span>
+          <span id="phase-display" class="phase phase-idle">PREPARADO</span>
+          <span id="set-display" class="sets">Set 1 / 5</span>
+        </div>
+      </div>
+
+      <div class="controls-main">
+        <button id="btn-toggle" class="btn btn-primary" type="button">Iniciar</button>
+        <button id="btn-reset" class="btn btn-ghost" type="button">Reiniciar</button>
+      </div>
+
+      <div class="controls-live">
+        <button id="btn-minus" class="btn btn-ghost" type="button" title="Adelantar 10 segundos">-10s</button>
+        <button id="btn-plus" class="btn btn-ghost" type="button" title="Extender 10 segundos">+10s</button>
+        <button id="btn-skip" class="btn btn-ghost" type="button" title="Saltar a la siguiente fase">Cortar fase ⏭</button>
+      </div>
+    </section>
+
+    <section class="config-card">
+      <h2>Programar rutina</h2>
+      <div class="fields">
+        <label>Trabajo (s)
+          <input id="input-work" type="number" inputmode="numeric" min="5" max="3600" value="45" />
+        </label>
+        <label>Descanso (s)
+          <input id="input-rest" type="number" inputmode="numeric" min="0" max="3600" value="90" />
+        </label>
+        <label>Sets
+          <input id="input-sets" type="number" inputmode="numeric" min="1" max="100" value="5" />
+        </label>
+        <label>Preparación (s)
+          <input id="input-prepare" type="number" inputmode="numeric" min="0" max="60" value="5" />
+        </label>
+      </div>
+
+      <div class="save-row">
+        <input id="input-routine-name" type="text" maxlength="24" placeholder="Nombre de rutina" />
+        <button id="btn-save" class="btn btn-ghost" type="button">Guardar</button>
+      </div>
+    </section>
+
+    <section class="presets-card">
+      <h2>Rutinas</h2>
+      <div id="preset-list" class="preset-list"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+    }
+  </script>
+</body>
+</html>

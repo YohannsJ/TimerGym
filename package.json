@@ -1,0 +1,11 @@
+{
+  "name": "timergym",
+  "version": "1.0.0",
+  "description": "Timer de entrenamiento por sets: web (PWA) + Android",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web/tests/engine.test.mjs",
+    "start": "npx -y serve web"
+  }
+}

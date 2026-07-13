@@ -1,0 +1,19 @@
+{
+  "name": "TimerGym",
+  "short_name": "TimerGym",
+  "description": "Timer de entrenamiento por sets: trabajo, descanso y cadencias configurables.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1726",
+  "theme_color": "#0e1726",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

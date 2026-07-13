@@ -1,150 +1,190 @@
 # TimerGym — Documentación del sistema
 
-Timer de entrenamiento por sets con fases de trabajo y descanso, cadencias
-configurables, rutinas guardadas y ajustes en vivo. Dos plataformas:
+Timer de entrenamiento por **sesiones multi-bloque**: cada sesión encadena
+bloques de ejercicios con nombre y cadencias propias (trabajo/descanso/sets),
+con firmas sonoras por evento, ajustes en vivo y estética gamer/rocker.
 
 | Plataforma | Carpeta | Tecnología | Estado |
 |---|---|---|---|
-| Web + móvil (PWA) | `web/` | HTML/CSS/JS vanilla, sin dependencias | Funcional, con tests |
-| Android nativo | `app/` | Kotlin + Jetpack Compose | Funcional (requiere generar Gradle wrapper) |
+| Web + móvil (PWA) | `web/` | HTML/CSS/JS vanilla, sin dependencias | **Principal** — funcional, 36 tests |
+| Android nativo | `app/` | Kotlin + Jetpack Compose | Funcional (timer simple v1); APK por CI |
 
-La PWA es la versión recomendada para móvil: se instala desde el navegador
-("Agregar a pantalla de inicio"), funciona offline y cubre Android e iOS.
+- **Web desplegada**: https://yohannsj.github.io/TimerGym/ (deploy automático).
+- **APK**: artifact del workflow "Android APK"; release automática en tags `v*`.
+- Investigación de mercado que guió el diseño: [`INVESTIGACION.md`](INVESTIGACION.md).
+- Plan de la iteración v2: [`PLAN.md`](PLAN.md).
 
 ---
 
 ## 1. Funcionalidades
 
-- **Fases**: preparación (cuenta regresiva inicial) → trabajo → descanso, repetido por N sets. El descanso del último set se omite.
-- **Cadencias**: trabajo, descanso, sets y preparación configurables por separado. Descanso = 0 encadena sets sin pausa (estilo EMOM).
-- **Presets integrados**: Fuerza (45/90×5), HIIT (30/30×10), Tabata (20/10×8), EMOM 10 (60/0×10).
-- **Rutinas guardadas**: nombre + configuración persisten en `localStorage`; se pueden borrar. La última configuración usada se restaura al abrir.
-- **Ajustes en vivo**:
-  - `-10s` adelanta la fase actual (terminar antes el descanso).
-  - `+10s` extiende la fase actual (descansar más).
-  - `Cortar fase` salta de inmediato a la siguiente fase.
-- **Señales**: beeps (WebAudio, sin archivos de audio) y vibración en countdown 3-2-1, cambio de fase y final.
-- **Pantalla activa**: Wake Lock API evita que el móvil se apague durante la sesión.
-- **Atajos de teclado** (escritorio): `Espacio` iniciar/pausar, `R` reiniciar, `S` cortar fase, `↑/+` extender, `↓/-` adelantar.
-- **Offline**: service worker con cache-first; la app funciona sin red tras la primera carga.
+- **Sesiones multi-bloque**: preparación inicial + hasta 20 bloques
+  `{ ejercicio, trabajo, descanso, sets }`. El descanso tras el último set del
+  último bloque se omite; descanso 0 encadena sets sin pausa (estilo EMOM).
+- **Builder visual**: agregar/reordenar/quitar bloques, nombrar ejercicios.
+- **Siguiente ejercicio**: barra `SIGUIENTE ▸` durante la sesión (lo que los
+  usuarios más piden en foros: saber qué viene mientras descansan).
+- **Presets integrados**: Fuerza (45/90×5), HIIT (30/30×10), Tabata (20/10×8),
+  EMOM 10 (60/0×10) y Full Body (4 ejercicios × 3 sets, multi-bloque).
+- **Sesiones guardadas**: persisten en `localStorage` sin límite; la última
+  configuración se restaura al abrir.
+- **Ajustes en vivo**: `-10s` (adelantar), `+10s` (extender), `Cortar` (saltar fase).
+- **Firmas sonoras** (WebAudio sintetizado, cero assets, toggle persistente):
+  - Inicio de trabajo: doble golpe de power chord grave (E2) con distorsión.
+  - Descanso: dos tonos descendentes suaves (660→440 Hz).
+  - Countdown 3-2-1: tick percusivo square 1.2 kHz.
+  - Final: riff ascendente E2-G2-A2-E3.
+  - Vibración en móvil (siempre, independiente del toggle de sonido).
+- **Pantalla activa**: Wake Lock API durante la sesión.
+- **Atajos** (escritorio): `Espacio` iniciar/pausar, `R` reiniciar, `S` cortar,
+  `↑/+` extender, `↓/-` adelantar.
+- **Offline**: service worker cache-first (`timergym-v2`).
 
 ## 2. Arquitectura web (`web/`)
 
 ```
 web/
-├── index.html              Estructura de la UI
-├── styles.css              Estilos (tema oscuro, responsive, safe-areas)
+├── index.html              Estructura de la UI + template de fila de bloque
+├── styles.css              Estética gamer/rocker (negro/rojo/ácido, clip-paths, glow)
 ├── manifest.webmanifest    Metadatos PWA (instalable)
 ├── sw.js                   Service worker (offline)
-├── icons/icon.svg          Ícono vectorial
+├── icons/icon.svg          Ícono: rayo ácido sobre arco de timer
 ├── js/
 │   ├── engine.js           Motor del timer (puro, sin DOM) ← núcleo
-│   ├── storage.js          Persistencia localStorage
-│   ├── audio.js            Beeps WebAudio + vibración
-│   └── app.js              Capa UI: conecta engine + storage + audio + DOM
+│   ├── storage.js          Persistencia localStorage (+ migración v1→v2)
+│   ├── audio.js            Firmas sonoras WebAudio + vibración
+│   └── app.js              Capa UI: engine + storage + audio + DOM
 └── tests/
-    └── engine.test.mjs     26 tests del motor (node:test, sin dependencias)
+    └── engine.test.mjs     36 tests del motor (node:test, sin dependencias)
 ```
 
 ### 2.1 Motor (`engine.js`)
 
-Máquina de estados:
+Una **sesión** se compila a una secuencia plana de intervalos que el motor
+recorre:
 
 ```
-IDLE ──start──▶ PREPARE ──▶ WORK ──▶ REST ──▶ WORK ──▶ ... ──▶ DONE
-                (si prepareSeconds=0, directo a WORK)
-                (REST se omite tras el último set y si restSeconds=0)
+sesión { name, prepareSeconds, blocks[] }
+  └─ compileSession() → [PREPARE?, (WORK → REST?) × sets × bloques]
+IDLE ──start──▶ intervalo 0 ──▶ 1 ──▶ ... ──▶ DONE
 ```
 
 **Decisión clave — sin drift:** el motor no decrementa un contador por tick.
-Guarda el timestamp absoluto en que termina la fase (`_endsAt`) y cada
+Guarda el timestamp absoluto en que termina el intervalo (`_endsAt`) y cada
 `tick()` calcula el restante contra el reloj real. Consecuencias:
 
 - Un tick que llega tarde no atrasa el timer.
-- Si la fase terminó hace X ms, ese sobrante (overflow) se descuenta de la fase siguiente.
-- Si la pestaña estuvo suspendida mucho tiempo, `tick()` encadena varias fases de golpe y queda exactamente donde debería según el reloj real.
+- Si el intervalo terminó hace X ms, ese sobrante (overflow) se descuenta del
+  siguiente — incluso cruzando límites de bloque.
+- Si la pestaña estuvo suspendida mucho tiempo, `tick()` encadena varios
+  intervalos de golpe y queda exactamente donde debería según el reloj real.
 
 **Inyección de dependencias:** el reloj (`now`) y el receptor de eventos
-(`onEvent`) se inyectan en el constructor. Por eso los tests corren con un
-reloj falso, sin esperas reales y de forma determinista.
+(`onEvent`) se inyectan en el constructor → tests deterministas con reloj falso.
 
-**Eventos emitidos:** `phaseChange` (con fase y set), `countdown`
-(segundos 3, 2, 1 de cada fase), `complete`.
+**Eventos:** `phaseChange` (fase, `label`, `nextUp`, set, bloque),
+`countdown` (3-2-1), `complete`.
 
 **API:**
 
 | Método | Efecto |
 |---|---|
-| `configure(config)` | Aplica config (con clamping) y resetea |
-| `start()` / `pause()` / `toggle()` | Control de ejecución; `start` tras DONE reinicia |
-| `tick()` | Avanza estado contra el reloj; llamar ~cada 100ms |
-| `addSeconds(delta)` | ±tiempo a la fase actual (mínimo 1s, no salta fase) |
-| `skipPhase()` | Corta la fase actual |
-| `reset()` | Vuelve a IDLE conservando config |
-| `getState()` | Snapshot: fase, restante, progreso, set, config |
+| `configure(config)` | API v1: work/rest×sets → sesión de un bloque |
+| `configureSession(session)` | API v2: sesión multi-bloque (con clamping) y reset |
+| `start()` / `pause()` / `toggle()` | Control; `start` tras DONE reinicia |
+| `tick()` | Avanza contra el reloj; llamar ~cada 100ms |
+| `addSeconds(delta)` | ±tiempo al intervalo actual (mínimo 1s, no salta fase) |
+| `skipPhase()` | Corta el intervalo actual |
+| `reset()` | Vuelve a IDLE conservando la sesión |
+| `getState()` | fase, restante, progreso de fase y de sesión, `label`, `nextUp`, set/bloque |
 
-**Límites de configuración** (`LIMITS`): trabajo 5–3600s, descanso 0–3600s,
-sets 1–100, preparación 0–60s. `clampConfig` corrige cualquier valor fuera
-de rango o no numérico.
+Helpers exportados: `clampConfig`, `clampSession`, `sessionFromConfig`,
+`compileSession`, `formatTime`, `LIMITS` (trabajo 5–3600s, descanso 0–3600s,
+sets 1–100, preparación 0–60s, bloques 1–20, nombres ≤40 chars).
 
 ### 2.2 Persistencia (`storage.js`)
 
-- `timergym.routines.v1`: array de rutinas guardadas por el usuario.
-- `timergym.lastConfig.v1`: última configuración aplicada (se restaura al abrir).
-- Claves versionadas (`.v1`) para poder migrar el esquema a futuro.
+- `timergym.sessions.v2`: sesiones guardadas por el usuario.
+- `timergym.lastSession.v2`: última sesión aplicada (se restaura al abrir).
+- `timergym.prefs.v1`: preferencias (sonido on/off).
+- **Migración automática v1→v2**: las rutinas planas de
+  `timergym.routines.v1` / `lastConfig.v1` se convierten en sesiones de un
+  bloque la primera vez que se carga; las claves viejas se eliminan.
 - Tolerante a `localStorage` bloqueado: la app funciona sin persistir.
 
 ### 2.3 UI (`app.js`)
 
-Render loop de `setInterval(100ms)`: llama `engine.tick()` y pinta. Como el
-motor calcula contra el reloj real, la precisión no depende del intervalo.
-El dial circular es SVG con `stroke-dashoffset`. El título de la pestaña
-muestra el tiempo restante cuando corre (útil en escritorio con la pestaña
-en segundo plano).
+Render loop de `setInterval(100ms)`: llama `engine.tick()` y pinta. El draft
+de sesión del builder es la fuente de verdad; cada edición pasa por
+`applyDraft()` que **normaliza, reconfigura el motor y reconstruye las filas**
+(los listeners deben recablearse porque `clampSession` crea objetos nuevos).
+El color de fase se propaga por CSS custom property (`--phase-color` en
+`body.phase-*`): dial, glow de card, sombras y botón principal reaccionan solos.
+
+### 2.4 Estética
+
+Gamer + rockero gym, sin fuentes ni assets externos (offline-first):
+negro profundo `#050507`, rojo sangre `#ff2b2b`, verde ácido `#b6ff00`;
+tipografía display condensada del sistema en mayúsculas; cards y botones
+angulares con `clip-path`; scanlines sutiles; glow neón por fase; pulso del
+reloj en WORK (respeta `prefers-reduced-motion`).
 
 ## 3. Arquitectura Android (`app/`)
 
 - `MainActivity.kt`: UI Compose (dial Canvas, inputs, presets).
-- `TimerViewModel.kt`: estado y lógica. El loop de ticks está anclado a
-  `SystemClock.elapsedRealtime()` para no acumular drift (antes usaba
-  `delay(1000)` puro, que se atrasa).
-- Compilación: requiere Android Studio o Gradle global (`gradle wrapper` y
-  luego `./gradlew assembleDebug`). Ver README.
+- `TimerViewModel.kt`: estado y lógica; ticks anclados a
+  `SystemClock.elapsedRealtime()` para no acumular drift.
+- Mantiene el modelo v1 (work/rest×sets). La PWA es la plataforma principal;
+  llevar sesiones multi-bloque a Android está en `MEJORAS.md`.
+- Compilación local: Android Studio o Gradle global (`gradle wrapper` +
+  `./gradlew assembleDebug`). En CI compila sin wrapper (Gradle 8.7).
 
-## 4. Cómo ejecutar y probar
+## 4. CI/CD (`.github/workflows/`)
+
+| Workflow | Dispara | Hace |
+|---|---|---|
+| `pages.yml` | push a `main` | `npm test` → publica `web/` en GitHub Pages |
+| `android.yml` | push que toque `app/**` o Gradle files; tags `v*` | `gradle assembleDebug` (JDK 17 + Gradle 8.7) → APK como artifact; release en tags |
+
+## 5. Cómo ejecutar y probar
 
 ```powershell
-# Tests del motor (26 tests, sin instalar nada)
+# Tests del motor (36 tests, sin instalar nada, Node >= 18)
 npm test
-# o directamente:
-node --test web/tests/engine.test.mjs
 
 # Servir la versión web
 npm start            # usa npx serve
-# o cualquier servidor estático:
-python -m http.server 8000 --directory web
+# o: python -m http.server 8000 --directory web
 ```
 
-Abrir `http://localhost:<puerto>`. Para instalar en móvil: abrir la URL en
-el navegador del teléfono (misma red Wi-Fi, usar la IP de la PC) y elegir
-"Agregar a pantalla de inicio". Nota: el service worker y la instalación
-PWA requieren HTTPS o `localhost`; en red local se puede probar la app
-igual, pero sin instalación/offline.
+Instalación en móvil: abrir https://yohannsj.github.io/TimerGym/ en el
+navegador del teléfono → "Agregar a pantalla de inicio".
 
 ### Checklist de prueba manual
 
-1. Iniciar con preset Tabata → cuenta 5s de preparación, luego alterna 20/10 ocho veces y termina sin descanso final.
-2. Pausar a mitad de fase → el tiempo queda congelado; reanudar continúa exacto.
-3. `+10s` durante descanso → suma 10s; `-10s` resta; nunca baja de 1s.
-4. `Cortar fase` en trabajo → pasa a descanso; en el último descanso → siguiente set.
-5. Guardar rutina con nombre → aparece como chip; recargar página → sigue ahí y la última config se restaura.
-6. Borrar rutina (✕) → desaparece.
-7. Beeps en 3-2-1 y al cambiar fase (en móvil, también vibración; requiere haber tocado Iniciar primero, por política de autoplay).
-8. Dejar la pestaña en segundo plano 1 minuto → al volver, el timer está donde corresponde según el reloj real.
+1. Preset Tabata → 5s preparación, alterna 20/10 ocho veces, termina sin descanso final.
+2. Preset Full Body → recorre los 4 ejercicios en orden; el display muestra el
+   ejercicio actual y `SIGUIENTE ▸` anuncia el próximo.
+3. Builder: agregar bloque, renombrarlo, moverlo con ▲▼, quitarlo; cada cambio
+   se refleja en el timer y persiste al recargar.
+4. Pausar a mitad de fase → congelado exacto; reanudar continúa.
+5. `+10s` / `-10s` → ajusta sin bajar de 1s; `Cortar` salta de fase.
+6. Guardar sesión con nombre → chip con detalle; recargar → sigue; borrar (✕) → desaparece.
+7. Sonidos: power chord al entrar a trabajo, tonos suaves al descanso, ticks
+   3-2-1, riff al final; toggle 🔊/🔇 silencia todo menos la vibración.
+8. Pestaña en segundo plano 1 min → al volver, el timer está donde corresponde.
+9. Fase de trabajo → borde/glow rojo y pulso del reloj; descanso → verde.
 
-## 5. Decisiones de diseño
+## 6. Decisiones de diseño
 
-- **PWA vanilla, cero dependencias**: sin build step, sin `node_modules`, nada que actualizar; el costo de un framework no se justifica para esta superficie.
-- **Motor separado de la UI**: permite testear toda la lógica sin navegador y reutilizarla si después se quiere envolver con Capacitor o un framework.
-- **Timestamps en vez de contadores**: los navegadores throttlean `setInterval` en segundo plano (hasta 1 tick/minuto); con contadores el timer quedaría inutilizable en móvil con pantalla apagada momentánea.
-- **El descanso del último set se omite**: terminar el último ejercicio = sesión completada; descansar al final no aporta.
+- **PWA vanilla, cero dependencias**: sin build step, sin `node_modules`;
+  el costo de un framework no se justifica para esta superficie.
+- **Motor separado de la UI**: toda la lógica testeable sin navegador.
+- **Sesión compilada a intervalos planos**: `_advance` no necesita conocer la
+  estructura de bloques; overflow y skip funcionan igual en cualquier límite.
+- **Timestamps en vez de contadores**: los navegadores throttlean `setInterval`
+  en segundo plano; con contadores el timer quedaría inutilizable.
+- **Sonido 100% sintetizado**: cero assets que cachear/cargar, y las firmas
+  (grave distorsionado vs. agudo suave) se distinguen sobre música.
+- **El descanso del último set se omite**: terminar el último ejercicio =
+  sesión completada.

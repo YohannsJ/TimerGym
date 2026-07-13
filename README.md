@@ -1,25 +1,35 @@
-# TimerGym
+# TimerGym ⚡
 
-Timer de entrenamiento por sets: fases de trabajo y descanso con cadencias
-configurables, rutinas guardadas y ajustes en vivo.
+Timer de entrenamiento por **sesiones multi-bloque**: encadena ejercicios con
+nombre y cadencias propias (trabajo/descanso/sets), con firmas sonoras rock,
+ajustes en vivo y estética gamer/rocker.
+
+**▶ App web: https://yohannsj.github.io/TimerGym/** (instalable como PWA:
+"Agregar a pantalla de inicio" desde el navegador del teléfono).
 
 Dos plataformas:
 
-- **`web/` — Web + móvil (PWA)**: la versión principal. Se instala desde el
-  navegador del teléfono ("Agregar a pantalla de inicio"), funciona offline,
-  con sonido, vibración y pantalla siempre activa. Sin dependencias ni build.
-- **`app/` — Android nativo** (Kotlin + Jetpack Compose).
+- **`web/` — Web + móvil (PWA)**: la versión principal. Offline, con sonido,
+  vibración y pantalla siempre activa. Sin dependencias ni build.
+- **`app/` — Android nativo** (Kotlin + Jetpack Compose, timer simple).
+  APK debug: artifact del workflow **Android APK** (release automática en tags `v*`).
 
-Documentación completa: [`docs/SISTEMA.md`](docs/SISTEMA.md) ·
-Mejoras hechas y pendientes: [`docs/MEJORAS.md`](docs/MEJORAS.md)
+Documentación: [`docs/SISTEMA.md`](docs/SISTEMA.md) ·
+Investigación de mercado: [`docs/INVESTIGACION.md`](docs/INVESTIGACION.md) ·
+Plan v2: [`docs/PLAN.md`](docs/PLAN.md) ·
+Mejoras: [`docs/MEJORAS.md`](docs/MEJORAS.md)
 
 ## Funcionalidades
 
-- Preparación → trabajo → descanso × N sets (el descanso final se omite).
-- Presets: Fuerza (45/90×5), HIIT (30/30×10), Tabata (20/10×8), EMOM 10 (60/0×10).
-- Rutinas propias guardadas con nombre (persisten al cerrar).
-- En vivo: `-10s` (adelantar), `+10s` (descansar más), `Cortar fase` (saltar).
-- Beeps en countdown 3-2-1, cambio de fase y final; vibración en móvil.
+- Sesiones: preparación → bloques de `ejercicio × (trabajo/descanso) × sets`
+  (hasta 20 bloques; el descanso final se omite; descanso 0 = estilo EMOM).
+- Builder visual: agregar/reordenar/quitar bloques, guardar sesiones con nombre.
+- `SIGUIENTE ▸` anuncia el próximo ejercicio durante la sesión.
+- Presets: Fuerza (45/90×5), HIIT (30/30×10), Tabata (20/10×8), EMOM 10,
+  Full Body (4 ejercicios × 3 sets).
+- En vivo: `-10s` (adelantar), `+10s` (descansar más), `Cortar` (saltar fase).
+- Firmas sonoras sintetizadas (WebAudio, cero assets): power chord al entrenar,
+  tonos suaves al descanso, ticks 3-2-1, riff final. Toggle 🔊 persistente.
 - Sin drift: el timer se calcula contra el reloj real, no con contadores.
 
 ## Web: ejecutar y probar
@@ -38,12 +48,10 @@ Atajos de teclado: `Espacio` iniciar/pausar · `R` reiniciar · `S` cortar fase 
 
 ## Android: compilar
 
-Requiere Android Studio (SDK 35) y JDK 17. El repo no incluye Gradle wrapper:
+En CI se compila solo (workflow **Android APK**). Local: Android Studio
+(SDK 35) y JDK 17; el repo no incluye Gradle wrapper:
 
 ```powershell
 gradle wrapper
 ./gradlew assembleDebug
 ```
-
-Estructura: `MainActivity.kt` (UI Compose) y `TimerViewModel.kt` (lógica,
-ticks anclados a `elapsedRealtime` para no acumular drift).
